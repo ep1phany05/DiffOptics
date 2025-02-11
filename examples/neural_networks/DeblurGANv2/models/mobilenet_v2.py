@@ -1,5 +1,6 @@
-import torch.nn as nn
 import math
+
+import torch.nn as nn
 
 
 def conv_bn(inp, oup, stride):
@@ -23,10 +24,10 @@ class InvertedResidual(nn.Module):
         super(InvertedResidual, self).__init__()
         self.stride = stride
         assert stride in [1, 2]
-
+        
         hidden_dim = round(inp * expand_ratio)
         self.use_res_connect = self.stride == 1 and inp == oup
-
+        
         if expand_ratio == 1:
             self.conv = nn.Sequential(
                 # dw
@@ -51,7 +52,7 @@ class InvertedResidual(nn.Module):
                 nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
                 nn.BatchNorm2d(oup),
             )
-
+    
     def forward(self, x):
         if self.use_res_connect:
             return x + self.conv(x)
@@ -75,7 +76,7 @@ class MobileNetV2(nn.Module):
             [6, 160, 3, 2],
             [6, 320, 1, 1],
         ]
-
+        
         # building first layer
         assert input_size % 32 == 0
         input_channel = int(input_channel * width_mult)
@@ -94,21 +95,21 @@ class MobileNetV2(nn.Module):
         self.features.append(conv_1x1_bn(input_channel, self.last_channel))
         # make it nn.Sequential
         self.features = nn.Sequential(*self.features)
-
+        
         # building classifier
         self.classifier = nn.Sequential(
             nn.Dropout(0.2),
             nn.Linear(self.last_channel, n_class),
         )
-
+        
         self._initialize_weights()
-
+    
     def forward(self, x):
         x = self.features(x)
         x = x.mean(3).mean(2)
         x = self.classifier(x)
         return x
-
+    
     def _initialize_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -123,4 +124,3 @@ class MobileNetV2(nn.Module):
                 n = m.weight.size(1)
                 m.weight.data.normal_(0, 0.01)
                 m.bias.data.zero_()
-

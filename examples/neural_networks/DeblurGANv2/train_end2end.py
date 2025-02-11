@@ -6,6 +6,7 @@ import torch
 import torch.optim as optim
 import tqdm
 import yaml
+from fire import Fire
 from torch.utils.data import DataLoader
 
 from adversarial_trainer import GANFactory
@@ -15,7 +16,6 @@ from models.losses import get_loss
 from models.models import get_model
 from models.networks import get_nets
 from schedulers import LinearDecay, WarmRestart
-from fire import Fire
 
 cv2.setNumThreads(0)
 
@@ -29,7 +29,7 @@ class Trainer:
         self.metric_counter = MetricCounter(config['experiment_desc'])
         self.warmup_epochs = config['warmup_num']
         self._init_params()
-        
+    
     def train(self):
         self._init_params()
         for epoch in range(0, self.config['num_epochs']):
@@ -41,24 +41,30 @@ class Trainer:
             self._validate(epoch)
             self.scheduler_G.step()
             self.scheduler_D.step()
-
+            
             if self.metric_counter.update_best_model():
-                torch.save({
+                torch.save(
+                    {
+                        'model': self.netG.state_dict()
+                    }, 'best_{}.h5'.format(self.config['experiment_desc'])
+                )
+            torch.save(
+                {
                     'model': self.netG.state_dict()
-                }, 'best_{}.h5'.format(self.config['experiment_desc']))
-            torch.save({
-                'model': self.netG.state_dict()
-            }, 'last_{}.h5'.format(self.config['experiment_desc']))
+                }, 'last_{}.h5'.format(self.config['experiment_desc'])
+            )
             print(self.metric_counter.loss_message())
-            logging.debug("Experiment Name: %s, Epoch: %d, Loss: %s" % (
-                self.config['experiment_desc'], epoch, self.metric_counter.loss_message()))
-        
+            logging.debug(
+                "Experiment Name: %s, Epoch: %d, Loss: %s" % (
+                    self.config['experiment_desc'], epoch, self.metric_counter.loss_message())
+                )
+    
     def prepare(self, epoch=0):
         if (epoch == self.warmup_epochs) and not (self.warmup_epochs == 0):
             self.netG.module.unfreeze()
             self.optimizer_G = self._get_optim(self.netG.parameters())
             self.scheduler_G = self._get_scheduler(self.optimizer_G)
-
+    
     def run(self, inputs, targets, is_inference=False, num_iters=1, desc=None):
         """
         Runs the network given an input blur image and a ground truth image.
@@ -90,7 +96,7 @@ class Trainer:
             tq.set_description(desc)
         else:
             tq = range(num_iters)
-
+        
         for it in tq:
             outputs = self.netG(inputs)
             loss_D = self._update_d(outputs, targets)
@@ -109,14 +115,14 @@ class Trainer:
         
         if desc is not None:
             tq.close()
-
+        
         return outputs.detach()
-
+    
     def _run_epoch(self, epoch):
         self.metric_counter.clear()
         for param_group in self.optimizer_G.param_groups:
             lr = param_group['lr']
-
+        
         epoch_size = self.config.get('train_batches_per_epoch') or len(self.train_dataset)
         tq = tqdm.tqdm(self.train_dataset, total=epoch_size)
         tq.set_description('Epoch {}, lr {}'.format(epoch, lr))
@@ -142,7 +148,7 @@ class Trainer:
                 break
         tq.close()
         self.metric_counter.write_to_tensorboard(epoch)
-
+    
     def _validate(self, epoch):
         self.metric_counter.clear()
         epoch_size = self.config.get('val_batches_per_epoch') or len(self.val_dataset)
@@ -166,7 +172,7 @@ class Trainer:
                 break
         tq.close()
         self.metric_counter.write_to_tensorboard(epoch, validation=True)
-
+    
     def _update_d(self, outputs, targets):
         if self.config['model']['d_name'] == 'no_gan':
             return 0
@@ -175,7 +181,7 @@ class Trainer:
         loss_D.backward(retain_graph=True)
         self.optimizer_D.step()
         return loss_D.item()
-
+    
     def _get_optim(self, params):
         if self.config['optimizer']['name'] == 'adam':
             optimizer = optim.Adam(params, lr=self.config['optimizer']['lr'])
@@ -186,25 +192,29 @@ class Trainer:
         else:
             raise ValueError("Optimizer [%s] not recognized." % self.config['optimizer']['name'])
         return optimizer
-
+    
     def _get_scheduler(self, optimizer):
         if self.config['scheduler']['name'] == 'plateau':
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
-                                                             mode='min',
-                                                             patience=self.config['scheduler']['patience'],
-                                                             factor=self.config['scheduler']['factor'],
-                                                             min_lr=self.config['scheduler']['min_lr'])
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer,
+                mode='min',
+                patience=self.config['scheduler']['patience'],
+                factor=self.config['scheduler']['factor'],
+                min_lr=self.config['scheduler']['min_lr']
+                )
         elif self.config['optimizer']['name'] == 'sgdr':
             scheduler = WarmRestart(optimizer)
         elif self.config['scheduler']['name'] == 'linear':
-            scheduler = LinearDecay(optimizer,
-                                    min_lr=self.config['scheduler']['min_lr'],
-                                    num_epochs=self.config['num_epochs'],
-                                    start_epoch=self.config['scheduler']['start_epoch'])
+            scheduler = LinearDecay(
+                optimizer,
+                min_lr=self.config['scheduler']['min_lr'],
+                num_epochs=self.config['num_epochs'],
+                start_epoch=self.config['scheduler']['start_epoch']
+                )
         else:
             raise ValueError("Scheduler [%s] not recognized." % self.config['scheduler']['name'])
         return scheduler
-
+    
     @staticmethod
     def _get_adversarial_trainer(d_name, net_d, criterion_d):
         if d_name == 'no_gan':
@@ -215,7 +225,7 @@ class Trainer:
             return GANFactory.create_model('DoubleGAN', net_d, criterion_d)
         else:
             raise ValueError("Discriminator Network [%s] not recognized." % d_name)
-
+    
     def _init_params(self):
         self.criterionG, criterionD = get_loss(self.config['model'])
         self.netG, netD = get_nets(self.config['model'])
@@ -231,28 +241,30 @@ class Trainer:
 def load_from_config(config_path='config/config.yaml'):
     with open(config_path, 'r', encoding='utf-8') as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
-
+    
     batch_size = config.pop('batch_size')
     # get_dataloader = partial(DataLoader,
     #                          batch_size=batch_size,
     #                          num_workers=0 if os.environ.get('DEBUG') else cpu_count(),
     #                          shuffle=True, drop_last=True)
-    get_dataloader = partial(DataLoader,
-                             batch_size=batch_size,
-                             shuffle=True, drop_last=True)
-
+    get_dataloader = partial(
+        DataLoader,
+        batch_size=batch_size,
+        shuffle=True, drop_last=True
+        )
+    
     datasets = map(config.pop, ('train', 'val'))
     datasets = map(PairedDataset.from_config, datasets)
     train, val = map(get_dataloader, datasets)
     trainer = Trainer(config, train=train, val=val)
-
+    
     return trainer
 
 
 def main():
     trainer = load_from_config()
     trainer.train()
-    
+
 
 if __name__ == '__main__':
     Fire(main)

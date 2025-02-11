@@ -1,6 +1,3 @@
-import os
-import cv2
-
 # # image path
 # im_dir = 'D:\github repo\DeblurGANv2\submit'
 # # output video path
@@ -56,8 +53,9 @@ import cv2
 #     main()
 
 
-import cv2
 import os
+
+import cv2
 import numpy as np
 from PIL import Image
 
@@ -67,7 +65,7 @@ def frame2video(im_dir, video_dir, fps):
     im_list.sort(key=lambda x: int(x.replace("frame", "").split('.')[0]))  # 最好再看看图片顺序对不
     img = Image.open(os.path.join(im_dir, im_list[0]))
     img_size = img.size  # 获得图片分辨率，im_dir文件夹下的图片分辨率需要一致
-
+    
     # fourcc = cv2.cv.CV_FOURCC('M','J','P','G') #opencv版本是2
     fourcc = cv2.VideoWriter_fourcc(*'XVID')  # opencv版本是3
     videoWriter = cv2.VideoWriter(video_dir, fourcc, fps, img_size)

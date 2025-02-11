@@ -1,6 +1,7 @@
-from __future__ import print_function, division, absolute_import
-from collections import OrderedDict
+from __future__ import absolute_import, division, print_function
+
 import math
+from collections import OrderedDict
 
 import torch.nn as nn
 from torch.utils import model_zoo
@@ -86,12 +87,12 @@ class SEModule(nn.Module):
         self.fc1 = nn.Conv2d(
             channels, channels // reduction, kernel_size=1,
             padding=0
-            )
+        )
         self.relu = nn.ReLU(inplace=True)
         self.fc2 = nn.Conv2d(
             channels // reduction, channels, kernel_size=1,
             padding=0
-            )
+        )
         self.sigmoid = nn.Sigmoid()
     
     def forward(self, x):
@@ -148,7 +149,7 @@ class SEBottleneck(Bottleneck):
         self.conv2 = nn.Conv2d(
             planes * 2, planes * 4, kernel_size=3,
             stride=stride, padding=1, groups=groups
-            )
+        )
         self.bn2 = nn.InstanceNorm2d(planes * 4, affine=False)
         self.conv3 = nn.Conv2d(planes * 4, planes * 4, kernel_size=1)
         self.bn3 = nn.InstanceNorm2d(planes * 4, affine=False)
@@ -174,12 +175,12 @@ class SEResNetBottleneck(Bottleneck):
         self.conv1 = nn.Conv2d(
             inplanes, planes, kernel_size=1,
             stride=stride
-            )
+        )
         self.bn1 = nn.InstanceNorm2d(planes, affine=False)
         self.conv2 = nn.Conv2d(
             planes, planes, kernel_size=3, padding=1,
             groups=groups
-            )
+        )
         self.bn2 = nn.InstanceNorm2d(planes, affine=False)
         self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1)
         self.bn3 = nn.InstanceNorm2d(planes * 4, affine=False)
@@ -204,12 +205,12 @@ class SEResNeXtBottleneck(Bottleneck):
         self.conv1 = nn.Conv2d(
             inplanes, width, kernel_size=1,
             stride=1
-            )
+        )
         self.bn1 = nn.InstanceNorm2d(width, affine=False)
         self.conv2 = nn.Conv2d(
             width, width, kernel_size=3, stride=stride,
             padding=1, groups=groups
-            )
+        )
         self.bn2 = nn.InstanceNorm2d(width, affine=False)
         self.conv3 = nn.Conv2d(width, planes * 4, kernel_size=1)
         self.bn3 = nn.InstanceNorm2d(planes * 4, affine=False)
@@ -288,7 +289,7 @@ class SENet(nn.Module):
                 ('conv1', nn.Conv2d(
                     3, inplanes, kernel_size=7, stride=2,
                     padding=3
-                    )),
+                )),
                 ('bn1', nn.InstanceNorm2d(inplanes, affine=False)),
                 ('relu1', nn.ReLU(inplace=True)),
             ]
@@ -298,8 +299,8 @@ class SENet(nn.Module):
             ('pool', nn.MaxPool2d(
                 3, stride=2,
                 ceil_mode=True
-                ))
-            )
+            ))
+        )
         self.layer0 = nn.Sequential(OrderedDict(layer0_modules))
         self.layer1 = self._make_layer(
             block,
@@ -355,7 +356,7 @@ class SENet(nn.Module):
                     self.inplanes, planes * block.expansion,
                     kernel_size=downsample_kernel_size, stride=stride,
                     padding=downsample_padding
-                    ),
+                ),
                 nn.InstanceNorm2d(planes * block.expansion, affine=False),
             )
         
@@ -364,8 +365,8 @@ class SENet(nn.Module):
             block(
                 self.inplanes, planes, groups, reduction, stride,
                 downsample
-                )
             )
+        )
         self.inplanes = planes * block.expansion
         for i in range(1, blocks):
             layers.append(block(self.inplanes, planes, groups, reduction))
@@ -411,7 +412,7 @@ def senet154(num_classes=1000, pretrained='imagenet'):
     model = SENet(
         SEBottleneck, [3, 8, 36, 3], groups=64, reduction=16,
         dropout_p=0.2, num_classes=num_classes
-        )
+    )
     if pretrained is not None:
         settings = pretrained_settings['senet154'][pretrained]
         initialize_pretrained_model(model, num_classes, settings)
@@ -424,7 +425,7 @@ def se_resnet50(num_classes=1000, pretrained='imagenet'):
         dropout_p=None, inplanes=64, input_3x3=False,
         downsample_kernel_size=1, downsample_padding=0,
         num_classes=num_classes
-        )
+    )
     if pretrained is not None:
         settings = pretrained_settings['se_resnet50'][pretrained]
         initialize_pretrained_model(model, num_classes, settings)
@@ -437,7 +438,7 @@ def se_resnet101(num_classes=1000, pretrained='imagenet'):
         dropout_p=None, inplanes=64, input_3x3=False,
         downsample_kernel_size=1, downsample_padding=0,
         num_classes=num_classes
-        )
+    )
     if pretrained is not None:
         settings = pretrained_settings['se_resnet101'][pretrained]
         initialize_pretrained_model(model, num_classes, settings)
@@ -450,7 +451,7 @@ def se_resnet152(num_classes=1000, pretrained='imagenet'):
         dropout_p=None, inplanes=64, input_3x3=False,
         downsample_kernel_size=1, downsample_padding=0,
         num_classes=num_classes
-        )
+    )
     if pretrained is not None:
         settings = pretrained_settings['se_resnet152'][pretrained]
         initialize_pretrained_model(model, num_classes, settings)
@@ -463,7 +464,7 @@ def se_resnext50_32x4d(num_classes=1000, pretrained='imagenet'):
         dropout_p=None, inplanes=64, input_3x3=False,
         downsample_kernel_size=1, downsample_padding=0,
         num_classes=num_classes
-        )
+    )
     return model
 
 
@@ -473,7 +474,7 @@ def se_resnext101_32x4d(num_classes=1000, pretrained='imagenet'):
         dropout_p=None, inplanes=64, input_3x3=False,
         downsample_kernel_size=1, downsample_padding=0,
         num_classes=num_classes
-        )
+    )
     if pretrained is not None:
         settings = pretrained_settings['se_resnext101_32x4d'][pretrained]
         initialize_pretrained_model(model, num_classes, settings)

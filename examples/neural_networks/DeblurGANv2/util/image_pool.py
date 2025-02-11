@@ -1,8 +1,7 @@
 import random
-import numpy as np
-import torch
-from torch.autograd import Variable
 from collections import deque
+
+import torch
 
 
 class ImagePool():
@@ -12,7 +11,7 @@ class ImagePool():
         if self.pool_size > 0:
             self.num_imgs = 0
             self.images = deque()
-
+    
     def add(self, images):
         if self.pool_size == 0:
             return images
@@ -24,7 +23,7 @@ class ImagePool():
             else:
                 self.images.popleft()
                 self.images.append(image)
-
+    
     def query(self):
         if len(self.images) > self.sample_size:
             return_images = list(random.sample(self.images, self.sample_size))

@@ -10,7 +10,7 @@ class AugTest(unittest.TestCase):
     def make_images():
         img = (np.random.rand(100, 100, 3) * 255).astype('uint8')
         return img.copy(), img.copy()
-
+    
     def test_aug(self):
         for scope in ('strong', 'weak'):
             for crop in ('random', 'center'):
