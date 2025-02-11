@@ -6,3 +6,11 @@ scipy
 imageio
 opencv-python
 scikit-image
+
+glog
+joblib
+albumentations
+tensorboardX
+pretrainedmodels
+fire
+torchsummary
