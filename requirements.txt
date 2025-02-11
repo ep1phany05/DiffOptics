@@ -1,5 +1,8 @@
-matplotlib==3.5.3
-mitsuba==3.0.2
-numpy==1.21.6
-scipy==1.9.1
-torch==1.12.1+cu113
+matplotlib
+mitsuba
+numpy==1.26
+scipy
+# torch==1.12.1+cu113
+imageio
+opencv-python
+scikit-image
