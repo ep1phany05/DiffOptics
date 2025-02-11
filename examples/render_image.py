@@ -1,11 +1,12 @@
-import numpy as np
-import cv2
-import torch
-import matplotlib.pyplot as plt
+import sys
 from pathlib import Path
+
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
 from tqdm import tqdm
 
-import sys
 sys.path.append("../")
 import diffoptics as do
 
@@ -17,7 +18,7 @@ lens = do.Lensgroup(device=device)
 lens.load_file(Path('./lenses/DoubleGauss/US02532751-1.txt'))
 
 # set sensor pixel size and film size
-pixel_size = 6.45e-3 # [mm]
+pixel_size = 6.45e-3  # [mm]
 film_size = [768, 1024]
 
 # set a rendering image sensor, and call prepare_mts to prepare the lensgroup for rendering
@@ -25,16 +26,17 @@ lens.prepare_mts(pixel_size, film_size)
 # lens.plot_setup2D()
 
 # create a dummy screen
-z0 = 10e3 # [mm]
-pixelsize = 1.1 # [mm]
+z0 = 10e3  # [mm]
+pixelsize = 1.1  # [mm]
 texture = cv2.cvtColor(cv2.imread('./images/squirrel.jpg'), cv2.COLOR_BGR2RGB)
-texture = np.flip(texture.astype(np.float32), axis=(0,1)).copy()
+texture = np.flip(texture.astype(np.float32), axis=(0, 1)).copy()
 texture_torch = torch.Tensor(texture).to(device=device)
 texturesize = np.array(texture.shape[0:2])
 screen = do.Screen(
     do.Transformation(np.eye(3), np.array([0, 0, z0])),
     texturesize * pixelsize, texture_torch, device=device
 )
+
 
 # helper function
 def render_single(wavelength, screen):
@@ -44,6 +46,7 @@ def render_single(wavelength, screen):
     I = screen.shading(uv, mask)
     return I, mask
 
+
 # sample wavelengths in [nm]
 wavelengths = [656.2725, 587.5618, 486.1327]
 
@@ -52,7 +55,7 @@ ray_counts_per_pixel = 100
 Is = []
 for wavelength_id, wavelength in enumerate(wavelengths):
     screen.update_texture(texture_torch[..., wavelength_id])
-
+    
     # multi-pass rendering by sampling the aperture
     I = 0
     M = 0
@@ -63,7 +66,7 @@ for wavelength_id, wavelength in enumerate(wavelengths):
     I = I / (M + 1e-10)
     
     # reshape data to a 2D image
-    I = I.reshape(*np.flip(np.asarray(film_size))).permute(1,0)
+    I = I.reshape(*np.flip(np.asarray(film_size))).permute(1, 0)
     Is.append(I.cpu())
 
 # show image

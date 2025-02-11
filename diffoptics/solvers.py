@@ -1,5 +1,4 @@
 from .basics import *
-import numpy as np
 
 
 class Optimization(PrettyPrinter):

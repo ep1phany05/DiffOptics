@@ -1,9 +1,10 @@
-from .basics import *
-from .shapes import *
-from scipy.interpolate import LSQBivariateSpline
-import matplotlib.pyplot as plt
 import copy
 import pathlib
+
+import matplotlib.pyplot as plt
+from scipy.interpolate import LSQBivariateSpline
+
+from .shapes import *
 
 
 def tex(img_2d, size_2d, x, y, bmode=BoundaryMode.replicate):  # texture indexing function

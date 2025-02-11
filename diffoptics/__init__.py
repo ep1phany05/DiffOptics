@@ -1,6 +1,5 @@
-from .version import __version__
-
 from .basics import *
-from .shapes import *
 from .optics import *
+from .shapes import *
 from .solvers import *
+from .version import __version__

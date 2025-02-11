@@ -1,10 +1,10 @@
-import os
-import numpy as np
-import torch
-import matplotlib.pyplot as plt
+import sys
 from pathlib import Path
 
-import sys
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+
 sys.path.append("../")
 import diffoptics as do
 
@@ -33,10 +33,10 @@ for i, view in enumerate(views):
     ps = lens.trace_to_sensor(ray, ignore_invalid=True)
     lim = 20e-3
     lens.spot_diagram(
-        ps[...,:2], show=True, xlims=[-lim, lim], ylims=[-lim, lim], color=colors_list[i]+'.',
+        ps[..., :2], show=True, xlims=[-lim, lim], ylims=[-lim, lim], color=colors_list[i] + '.',
         savepath='sanity_check_field_view_{}.png'.format(int(view))
     )
-
+    
     spot_rmss.append(lens.rms(ps))
 
 plt.show()

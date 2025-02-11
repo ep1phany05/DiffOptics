@@ -1,8 +1,9 @@
-import torch
-import matplotlib.pyplot as plt
+import sys
 from pathlib import Path
 
-import sys
+import matplotlib.pyplot as plt
+import torch
+
 sys.path.append("../")
 import diffoptics as do
 
@@ -16,17 +17,22 @@ lens.load_file(Path('./lenses/Thorlabs/ACL5040U.txt'))
 print(lens.surfaces[0])
 
 # generate array of rays
-wavelength = torch.Tensor([532.8]).to(device) # [nm]
-R = 15.0 # [mm]
+wavelength = torch.Tensor([532.8]).to(device)  # [nm]
+R = 15.0  # [mm]
+
+
 def render():
     ray_init = lens.sample_ray(wavelength, M=31, R=R)
     ps = lens.trace_to_sensor(ray_init)
-    return ps[...,:2]
+    return ps[..., :2]
+
 
 def trace_all():
     ray_init = lens.sample_ray_2D(R, wavelength, M=15)
     ps, oss = lens.trace_to_sensor_r(ray_init)
-    return ps[...,:2], oss
+    return ps[..., :2], oss
+
+
 ps, oss = trace_all()
 ax, fig = lens.plot_raytraces(oss)
 
@@ -49,7 +55,7 @@ diff_names = [
 
 # optimize
 out = do.LM(lens, diff_names, 1e-4, option='diag') \
-        .optimize(render, lambda y: 0.0 - y, maxit=300, record=True)
+    .optimize(render, lambda y: 0.0 - y, maxit=300, record=True)
 
 # show loss
 plt.figure()
