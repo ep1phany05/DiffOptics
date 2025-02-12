@@ -25,7 +25,7 @@ class DeblurModel(nn.Module):
         fake = self.tensor2im(output.data)
         real = self.tensor2im(target.data)
         psnr = PSNR(fake, real)
-        ssim = SSIM(fake, real, multichannel=True)
+        ssim = SSIM(fake, real, channel_axis=-1)
         vis_img = np.hstack((inp, fake, real))
         return psnr, ssim, vis_img
 
