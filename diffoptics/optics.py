@@ -52,7 +52,7 @@ class Lensgroup(Endpoint):
         self.theta_z = torch.Tensor(np.asarray(theta_z)).to(device)
         self.device = device
         
-        # Sequentials properties
+        # Sequential properties
         self.surfaces = []
         self.materials = []
         
