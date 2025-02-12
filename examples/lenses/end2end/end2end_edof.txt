@@ -1,4 +1,4 @@
-End2end EDOF exmaple
+End2end EDOF example
 type distance roc diameter material
 O       0.0        0.0       0.0      AIR 
 S       0.0       62.8      12.7      n-bk7
