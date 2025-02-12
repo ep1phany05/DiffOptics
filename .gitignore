@@ -9,3 +9,5 @@ build/
 data/
 runs/
 results/
+
+end2end_output/
