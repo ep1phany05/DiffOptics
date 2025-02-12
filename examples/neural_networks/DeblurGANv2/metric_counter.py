@@ -2,14 +2,14 @@ import logging
 from collections import defaultdict
 
 import numpy as np
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter  # 使用torch自带的tensorboard
 
 WINDOW_SIZE = 100
 
 
 class MetricCounter:
     def __init__(self, exp_name):
-        self.writer = SummaryWriter(exp_name)
+        self.writer = SummaryWriter(exp_name)  # 使用torch的SummaryWriter
         logging.basicConfig(filename='{}.log'.format(exp_name), level=logging.DEBUG)
         self.metrics = defaultdict(list)
         self.images = defaultdict(list)
@@ -26,14 +26,14 @@ class MetricCounter:
         for name, value in zip(
                 ('G_loss', 'G_loss_content', 'G_loss_adv', 'D_loss'),
                 (l_G, l_content, l_G - l_content, l_D)
-                ):
+        ):
             self.metrics[name].append(value)
     
     def add_metrics(self, psnr, ssim):
         for name, value in zip(
                 ('PSNR', 'SSIM'),
                 (psnr, ssim)
-                ):
+        ):
             self.metrics[name].append(value)
     
     def loss_message(self):
@@ -48,10 +48,11 @@ class MetricCounter:
             imgs = self.images[tag]
             if imgs:
                 imgs = np.array(imgs)
+                # 这里假设图片数据为numpy数组，若图片数据格式为BGR，则使用[:, :, :, ::-1]转换为RGB
                 self.writer.add_images(
                     tag, imgs[:, :, :, ::-1].astype('float32') / 255, dataformats='NHWC',
                     global_step=epoch_num
-                    )
+                )
                 self.images[tag] = []
     
     def update_best_model(self):
