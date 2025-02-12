@@ -18,8 +18,8 @@ train:
       max_h_size: 25
       max_w_size: 25
     - name: jpeg
-      quality_lower: 70
-      quality_upper: 90
+#      quality_lower: 70
+#      quality_upper: 90
     - name: motion_blur
     - name: median_blur
     - name: gamma
