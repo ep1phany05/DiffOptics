@@ -10,6 +10,7 @@ scikit-image
 glog
 joblib
 albumentations
+tensorboard
 tensorboardX
 pretrainedmodels
 fire
