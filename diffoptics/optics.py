@@ -152,7 +152,7 @@ class Lensgroup(Endpoint):
                                 b = float(ls[5])
                             else:
                                 ai.append(float(ls[ac]))
-                        surfaces.append(XYPolynomial(r, d_total, J=3, ai=ai, b=b))
+                        surfaces.append(XYPolynomial(r, d_total, J=3, ai=ai, b=b))  # TODO: J=3
                     elif surface_type == 'B':  # B-spline
                         del roc
                         ai = []
@@ -1852,6 +1852,7 @@ class XYPolynomial(Surface):
             self.ai = torch.zeros(self.J2aisize(J)) if J > 0 else torch.array([0])
         else:
             if len(ai) != self.J2aisize(J):
+                print('len(ai) = {}'.format(len(ai)), 'J = {}'.format(J))
                 raise Exception("len(ai) != (J+1)*(J+2)/2 !")
             self.ai = torch.Tensor(ai).to(device)
         if b is None:
