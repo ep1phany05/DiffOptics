@@ -7,9 +7,8 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from inr.diner import DINER
+from metrics import crop_and_evaluate_views
 
-# 将上级目录加入搜索路径，保证可以导入 diffoptics 等模块
 sys.path.append("../")
 
 import diffoptics as do
@@ -18,13 +17,7 @@ from utils_end2end import dict_to_tensor, tensor_to_dict, load_deblurganv2, Imag
 import warnings
 
 warnings.filterwarnings("ignore")
-
-# 设定随机种子，保证结果可复现
 torch.manual_seed(0)
-
-# ------------------------------------------------------------------------------
-# 初始化设备（CPU或GPU）
-# ------------------------------------------------------------------------------
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 # ------------------------------------------------------------------------------
@@ -83,12 +76,7 @@ def create_screen(texture: torch.Tensor, z: float, pixelsize: float) -> do.Scree
     screen: do.Screen, 封装了纹理与位姿信息的屏幕对象
     """
     texturesize = np.array(texture.shape[0:2])
-    screen = do.Screen(
-        do.Transformation(np.eye(3), np.array([0, 0, z])),
-        texturesize * pixelsize,
-        texture,
-        device=device
-    )
+    screen = do.Screen(do.Transformation(np.eye(3), np.array([0, 0, z])), texturesize * pixelsize, texture, device=device)
     return screen
 
 
@@ -145,12 +133,7 @@ def render(screen: do.Screen, images: list[torch.Tensor], ray_counts_per_pixel: 
         I = 0
         M = 0
         for i in range(ray_counts_per_pixel):
-            I_current, mask = render_single(
-                wavelength,
-                screen,
-                lambda x: lens.sample_ray_sensor(x),
-                images
-            )
+            I_current, mask = render_single(wavelength, screen, lambda x: lens.sample_ray_sensor(x), images)
             I = I + I_current
             M = M + mask
         
@@ -176,12 +159,7 @@ def render_gt(screen: do.Screen, images: list[torch.Tensor]) -> torch.Tensor:
     """
     Is = []
     for wavelength in wavelengths:
-        I, mask = render_single(
-            wavelength,
-            screen,
-            lambda x: lens.sample_ray_sensor_pinhole(x, focal_length),
-            images
-        )
+        I, mask = render_single(wavelength, screen, lambda x: lens.sample_ray_sensor_pinhole(x, focal_length), images)
         I = I.reshape((len(images), *np.flip(np.asarray(film_size)))).permute(0, 2, 1)
         Is.append(I)
     return torch.stack(Is, axis=-1)
@@ -197,15 +175,6 @@ def render_gt(screen: do.Screen, images: list[torch.Tensor]) -> torch.Tensor:
 #     a[3] * x**2 + a[4] * x*y + a[5] * y**2 +
 #     a[6] * x**3 + a[7] * x**2*y + a[8] * x*y**2 + a[9] * y**3
 # )
-#
-# diner = DINER(
-#             in_features=1, out_features=1,
-#             hidden_features=32, hidden_layers=2,
-#             hash_table_length=10,
-#             first_omega_0=30, hidden_omega_0=6
-#         ).to(dtype=torch.float32).to(device)
-# lens.surfaces[0].ai = diner(None)["model_out"].squeeze(-1) * 1e-9 * torch.Tensor([0, 0, 0, 0, 0, 0, 1, 1, 1, 1]).to(device)
-
 diff_parameters = [lens.surfaces[0].ai]
 
 # 指定学习率 (仅对后四个系数进行学习，其他为0)
@@ -236,9 +205,7 @@ for x, label in zip(current_parameters, diff_parameter_labels):
 # 加载训练数据 (图像文件夹)
 # ------------------------------------------------------------------------------
 train_path = './training_dataset/'
-train_dataloader = torch.utils.data.DataLoader(
-    ImageFolder(train_path), batch_size=1, shuffle=False
-)
+train_dataloader = torch.utils.data.DataLoader(ImageFolder(train_path), batch_size=1, shuffle=False)
 it = iter(train_dataloader)
 image = next(it).squeeze().to(device)
 
@@ -255,12 +222,13 @@ settings = {
     'num_of_training'      : 10,  # 外层训练循环次数
     'savefig'              : True  # 是否保存中间可视化结果
 }
-
-# 如果需要保存可视化结果，则创建对应输出目录
-if settings['savefig']:
-    opath = Path('end2end_output') / str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
+if settings['savefig']:  # 如果需要保存可视化结果，则创建对应输出目录
+    opath = Path('end2end_output') / (str(datetime.now().strftime("%Y%m%d%H%M%S")) + "-origin")
     opath.mkdir(parents=True, exist_ok=True)
-
+    
+    results_file = opath / 'training_log.txt'
+    with open(results_file, 'w', encoding='utf-8') as f:
+        f.write("z(mm)\tlens.surfaces[0].ai\tPSNR\tSSIM\tLPIPS\n")
 
 # ------------------------------------------------------------------------------
 # 将渲染封装为一个函数，便于反向传播时的梯度计算 (VJP)
@@ -273,7 +241,6 @@ def wrapper_func(screen, images, squeezed_diff_parameters, diff_parameters, diff
     for idx, label in enumerate(diff_parameter_labels):
         exec('lens.{} = unpacked_diff_parameters[{}]'.format(label, idx))
     return render(screen, images, settings['spp_forward'])
-
 
 # ------------------------------------------------------------------------------
 # 设置屏幕位置和对应的像素大小 (模拟不同景深或景物距离)
@@ -325,33 +292,23 @@ for iteration in range(settings['num_of_training']):
         Is_gt = 2 * torch.permute(Is_gt, (0, 3, 1, 2)) / 255 - 1
         
         # (2) 训练网络权重
-        Is_output = net.run(
-            Is, Is_gt, is_inference=False,
-            num_iters=settings['network_training_iter'],
-            desc='(2) Training network weights'
-        )
-        Is_output_np = np.transpose(
-            255 / 2 * (Is_output.detach().cpu().numpy() + 1), (0, 2, 3, 1)
-        ).astype(np.uint8)
+        Is_output = net.run(Is, Is_gt, is_inference=False, num_iters=settings['network_training_iter'], desc='(2) Training network weights')
+        Is_output_np = np.transpose(255 / 2 * (Is_output.detach().cpu().numpy() + 1), (0, 2, 3, 1)).astype(np.uint8)
         Is_output_view = np.concatenate([I for I in Is_output_np], axis=1)
         del Is_output_np
+        
+        cropped_Is_view, cropped_Is_gt_view, cropped_Is_output_view, psnr_val, ssim_val, lpips_val = crop_and_evaluate_views(Is_view, Is_gt_view, Is_output_view)
+        print('PSNR = {:.2f}, SSIM = {:.4f}, LPIPS = {:.4f}'.format(psnr_val, ssim_val, lpips_val))
         
         # 保存可视化结果
         if settings['savefig']:
             fig, axs = plt.subplots(3, 1)
-            for idx, I_view, label in zip(
-                    range(3),
-                    [Is_view, Is_gt_view, Is_output_view],
-                    ['Input', 'Ground truth', 'Network output']
-            ):
+            for idx, I_view, label in zip(range(3), [cropped_Is_view, cropped_Is_gt_view, cropped_Is_output_view], ['Input', 'Ground truth', 'Network output']):
                 axs[idx].imshow(I_view)
                 axs[idx].set_title(label + ' image(s)')
                 axs[idx].set_axis_off()
             fig.tight_layout()
-            fig.savefig(
-                str(opath / 'iter_{}_z={}mm_images.png'.format(iteration, z)),
-                dpi=400, bbox_inches='tight', pad_inches=0.1
-            )
+            fig.savefig(str(opath / 'iter_{}_z={}mm_images.png'.format(iteration, z)), dpi=400, bbox_inches='tight', pad_inches=0.1)
             fig.clear()
             plt.close(fig)
         
@@ -372,19 +329,17 @@ for iteration in range(settings['num_of_training']):
         
         # 多次累加后向传播 (num_passes 次)
         for inner_iteration in tq:
-            dthetas += torch.autograd.functional.vjp(
-                lambda x: wrapper_func(screen, images, x, diff_parameters, diff_parameter_labels),
-                dict_to_tensor(diff_parameters),
-                Is_grad
-            )[1]
+            dthetas += torch.autograd.functional.vjp(lambda x: wrapper_func(screen, images, x, diff_parameters, diff_parameter_labels), dict_to_tensor(diff_parameters), Is_grad)[1]
         tq.close()
         
         # 更新光学参数 (镜头表面ai等)
         with torch.no_grad():
-            for label, diff_para, dtheta in zip(
-                    diff_parameter_labels,
-                    diff_parameters,
-                    tensor_to_dict(dthetas, diff_parameters)
-            ):
+            for label, diff_para, dtheta in zip(diff_parameter_labels, diff_parameters, tensor_to_dict(dthetas, diff_parameters)):
                 diff_para -= learning_rates[label] * dtheta.squeeze() / settings['num_passes']
                 diff_para.grad = None
+        
+        # 将本轮结果写入 txt 文件
+        current_ai_list = lens.surfaces[0].ai.detach().cpu().tolist()  # list of float
+        ai_str = "[" + ", ".join(f"{x:e}" for x in current_ai_list) + "]"
+        with open(results_file, 'a', encoding='utf-8') as f:
+            f.write(f"{z}\t{ai_str}\t{psnr_val:.2f}\t{ssim_val:.4f}\t{lpips_val:.4f}\n")
