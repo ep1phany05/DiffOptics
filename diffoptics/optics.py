@@ -144,6 +144,21 @@ class Lensgroup(Endpoint):
                     if surface_type == 'O':  # object
                         d_total = 0.
                         ds.pop()
+                    elif surface_type == 'M':  # Mesh surface
+                        size_x = int(ls[5])
+                        size_y = int(ls[6])
+                        if len(ls) > 7:
+                            c = list(map(float, ls[7:]))
+                        else:
+                            c = np.zeros(size_x * size_y)
+                        surfaces.append(
+                            Mesh(
+                                r=float(ls[3]) / 2,
+                                d=d_total,
+                                size=(size_x, size_y),
+                                c=np.array(c).reshape(size_x, size_y)
+                                )
+                        )
                     elif surface_type == 'X':  # XY-polynomial
                         del roc
                         ai = []
@@ -2008,7 +2023,7 @@ class Mesh(Surface):
             self.c = torch.zeros(size).to(device)
         else:
             # c 为一个离散网格，用于表示表面高度
-            c_shape = size + np.array([self.px, self.py]) + 1
+            c_shape = size  #  + np.array([self.px, self.py]) + 1
             c = np.asarray(c)
             if c.size != np.prod(c_shape):
                 raise Exception('len(c) is not correct!')
@@ -2037,6 +2052,8 @@ class Mesh(Surface):
     
     def surface(self, x, y):
         # 与 g(x, y) 相同
+        x_t = torch.as_tensor(x, dtype=self.c.dtype, device=self.c.device)
+        y_t = torch.as_tensor(y, dtype=self.c.dtype, device=self.c.device)
         return self._shading(x, y)
     
     def surface_derivatives(self, x, y):
@@ -2078,6 +2095,8 @@ class Mesh(Surface):
     
     def _shading(self, x, y, bmode=BoundaryMode.replicate, lmode=InterpolationMode.linear):
         # 将 (x, y) 映射到网格坐标 p，再做插值取值
+        x = torch.as_tensor(x, dtype=self.c.dtype, device=self.c.device)
+        y = torch.as_tensor(y, dtype=self.c.dtype, device=self.c.device)
         p = (torch.stack((x, y), axis=-1) / (2 * self.r) + 0.5) * (self.size - 1)
         p_floor = torch.floor(p).long()
         

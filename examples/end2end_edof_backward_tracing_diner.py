@@ -23,7 +23,7 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 # 创建镜头 + 准备
 # --------------------------------------------------------------------------
 lens = do.Lensgroup(device=device)
-lens.load_file(Path('./lenses/end2end/end2end_edof.txt'))  # norminal design
+lens.load_file(Path('./lenses/end2end/end2end_edof_2.txt'))  # TODO: norminal design
 lens.plot_setup2D()
 [surface.to(device) for surface in lens.surfaces]
 
@@ -90,25 +90,31 @@ def render_gt(screen: do.Screen, images: list[torch.Tensor]) -> torch.Tensor:
 # --------------------------------------------------------------------------
 # DINER
 # --------------------------------------------------------------------------
-from inr.diner import DINER
-# mask = [1, 1, 1, 0, 0, 0, 1, 0, 1, 1]
-mask = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]  # TODO
-diner = DINER(
+from inr.diner import DINER, DINER_XY_polynomial
+
+# ============================== Aspheric ==============================
+# mask = [0, 0, 0, 1, 0, 1, 1, 1, 1, 1]
+mask = [0, 0, 0, 0, 0, 0, 1, 1, 1, 1]  # TODO
+diner = DINER_XY_polynomial(
     in_features=1, out_features=1,
     hidden_features=32, hidden_layers=2,
     hash_table_length=10,
     out_mask=mask,
     first_omega_0=30., hidden_omega_0=6.
 ).to(dtype=torch.float32).to(device)
-diner_optim = torch.optim.Adam(diner.parameters(), lr=1e-4)
+# ======================================================================
 
-# --------------------------------------------------------------------------
-# 原本 lens.surfaces[0].ai 是 10 维
-# 现在由 diner 输出: lens.surfaces[0].ai = diner_output
-# 并且, 我们依旧想对这 10 维做 element-wise 学习率
-# --------------------------------------------------------------------------
-# diff_parameter_labels = ['surfaces[0].ai']
-# manual_lr = 1e-15 * torch.tensor([1, 1, 1, 1, 1, 1, 1, 1, 1, 1], device=device, dtype=torch.float32)
+# ==============================   Mesh   ==============================
+# W, H = 128, 128
+# diner = DINER(
+#     in_features=1, out_features=1,
+#     hidden_features=64, hidden_layers=2,
+#     hash_table_length=W * H,
+#     first_omega_0=30., hidden_omega_0=6.
+# ).to(dtype=torch.float32).to(device)
+# ======================================================================
+
+diner_optim = torch.optim.Adam(diner.parameters(), lr=1e-4)
 
 # --------------------------------------------------------------------------
 # 初始化网络 (DeblurGANv2)
@@ -137,23 +143,30 @@ if settings['savefig']:
     from pathlib import Path
     import os
     
+    # opath = Path('end2end_output') / (str(datetime.now().strftime("%Y%m%d%H%M%S")) + "-DINER" + f"-mesh{W}*{H}")
     opath = Path('end2end_output') / (str(datetime.now().strftime("%Y%m%d%H%M%S")) + "-DINER" + f"{sum(mask)}")
     os.makedirs(opath, exist_ok=True)
     
     results_file = opath / 'training_log.txt'
     with open(results_file, 'w', encoding='utf-8') as f:
         f.write("z(mm)\tlens.surfaces[0].ai\tPSNR\tSSIM\tLPIPS\n")
+        # f.write("z(mm)\tPSNR\tSSIM\tLPIPS\n")
 
 # --------------------------------------------------------------------------
 # wrapper_func: 用于 vjp
-# 但其实 lens.surfaces[0].ai 不再是 leaf variable
-# 这里仍然维持跟原逻辑一致, 做多次累加
 # --------------------------------------------------------------------------
 def wrapper_func(screen, images, params):
     """
     params: shape=[N], 此处即 DINER 输出的参数.
     """
-    lens.surfaces[0].ai = params
+    # ============================== Aspheric ==============================
+    # lens.surfaces[0].ai = params
+    # ======================================================================
+    
+    # ==============================   Mesh   ==============================
+    lens.surfaces[0].c = params
+    # ======================================================================
+    
     return render(screen, images, settings['spp_forward'])
 
 # --------------------------------------------------------------------------
@@ -172,7 +185,7 @@ for iteration in range(settings['num_of_training']):
         
         screen = create_screen(image, z, pixelsizes[z_idx])
         
-        # (1) 前向渲染一批图像
+        # (1) 前向渲染
         tq = tqdm(range(settings['image_batch_size']))
         tq.set_description('(1) Rendering batch images')
         
@@ -186,20 +199,23 @@ for iteration in range(settings['num_of_training']):
             image = data.squeeze().to(device)
             images.append(image.clone())
         tq.close()
-        
-        # ---- 用 diner 输出 N 维, 并赋给 lens ----
         with torch.no_grad():
-            diner_output = diner(None)["model_out"].squeeze(-1)
-            lens.surfaces[0].ai = diner_output  # TODO
+            # ============================== Aspheric ==============================
+            # diner_output = diner(None)["model_out"].squeeze(-1)
+            # lens.surfaces[0].ai = diner_output
+            # ======================================================================
+            
+            # ==============================   Mesh   ==============================
+            diner_output = diner(None)["model_out"].squeeze(-1).reshape(W, H)
+            lens.surfaces[0].c = diner_output
+            # ======================================================================
             
             Is = render(screen, images, settings['spp_forward'])
             Is_gt = render_gt(screen, images)
         
-        # 可视化
+        # 可视化： reshape + 归一化
         Is_view = np.concatenate([I.cpu().numpy().astype(np.uint8) for I in Is], axis=1)
         Is_gt_view = np.concatenate([I.cpu().numpy().astype(np.uint8) for I in Is_gt], axis=1)
-        
-        # reshape + 归一化
         Is = 2 * torch.permute(Is, (0, 3, 1, 2)) / 255 - 1
         Is_gt = 2 * torch.permute(Is_gt, (0, 3, 1, 2)) / 255 - 1
         
@@ -208,9 +224,12 @@ for iteration in range(settings['num_of_training']):
         Is_output_np = np.transpose(255 / 2 * (Is_output.detach().cpu().numpy() + 1), (0, 2, 3, 1)).astype(np.uint8)
         Is_output_view = np.concatenate([I for I in Is_output_np], axis=1)
         
+        # 裁剪 + 评估
         cropped_Is_view, cropped_Is_gt_view, cropped_Is_output_view, psnr_val, ssim_val, lpips_val = crop_and_evaluate_views(Is_view, Is_gt_view, Is_output_view)
         print('PSNR={:.2f}, SSIM={:.4f}, LPIPS={:.4f}'.format(psnr_val, ssim_val, lpips_val))
-        print('lens.surfaces[0].ai:', lens.surfaces[0].ai)
+        # ============================== Aspheric ==============================
+        # print('lens.surfaces[0].ai:', lens.surfaces[0].ai)
+        # ======================================================================
         
         # 保存可视化
         if settings['savefig']:
@@ -234,15 +253,20 @@ for iteration in range(settings['num_of_training']):
         
         # (4) 多次 vjp 累加
         # 这里直接使用 DINER 输出作为叶子变量
-        param_nd = diner(None)["model_out"].squeeze(-1).detach().clone()
+        # ============================== Aspheric ==============================
+        # param_nd = diner(None)["model_out"].squeeze(-1).detach().clone()
+        # ======================================================================
+        
+        # ==============================   Mesh   ==============================
+        param_nd = diner(None)["model_out"].squeeze(-1).reshape(W, H).detach().clone()
+        # ======================================================================
         param_nd.requires_grad = True  # 让它成为leaf param, 方便手动更新
         
         dthetas = torch.zeros_like(param_nd)
         tq = tqdm(range(settings['num_passes']))
         tq.set_description('(3) Back-prop optical parameters')
         
-        for inner_iter in tq:
-            # 这里vjp: f(param_nd)-> image  => back with Is_grad
+        for inner_iter in tq:  # 这里vjp: f(param_nd)-> image  => back with Is_grad
             vjp_val = torch.autograd.functional.vjp(lambda p: wrapper_func(screen, images, p), param_nd, Is_grad)[1]
             dthetas += vjp_val
         
@@ -251,10 +275,14 @@ for iteration in range(settings['num_of_training']):
         #     param_nd -= manual_lr * dthetas
         
         # (6) 将 vjp 累计梯度传回 DINER
-        #     原理: diner_output.backward(gradient=xxx)
-        #     => 这样 PyTorch会把 gradient 传到 diner.parameters()
         diner_optim.zero_grad()
-        updated_diner_output = diner(None)["model_out"].squeeze(-1)
+        # ============================== Aspheric ==============================
+        #updated_diner_output = diner(None)["model_out"].squeeze(-1)
+        # ======================================================================
+        
+        # ==============================   Mesh   ==============================
+        updated_diner_output = diner(None)["model_out"].squeeze(-1).reshape(W, H)
+        # ======================================================================
         
         # (6-1) 计算 "delta" = 新param - 旧param
         delta = param_nd.detach() - updated_diner_output  # shape=[10]
@@ -267,8 +295,14 @@ for iteration in range(settings['num_of_training']):
         diner_optim.step()
         
         # 将本轮结果写入 txt 文件
-        current_ai_list = lens.surfaces[0].ai.detach().cpu().tolist()
-        ai_str = "[" + ", ".join(f"{x:e}" for x in current_ai_list) + "]"
+        # ============================== Aspheric ==============================
+        # current_ai_list = lens.surfaces[0].ai.detach().cpu().tolist()
+        # ai_str = "[" + ", ".join(f"{x:e}" for x in current_ai_list) + "]"
+        # with open(results_file, 'a', encoding='utf-8') as f:
+        #     f.write(f"{z}\t{ai_str}\t{psnr_val:.2f}\t{ssim_val:.4f}\t{lpips_val:.4f}\n")
+        # ======================================================================
+        
+        # ==============================   Mesh   ==============================
         with open(results_file, 'a', encoding='utf-8') as f:
-            f.write(f"{z}\t{ai_str}\t{psnr_val:.2f}\t{ssim_val:.4f}\t{lpips_val:.4f}\n")
-
+            f.write(f"{z}\t{psnr_val:.2f}\t{ssim_val:.4f}\t{lpips_val:.4f}\n")
+        # ======================================================================
