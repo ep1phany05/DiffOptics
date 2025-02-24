@@ -94,7 +94,7 @@ from inr.diner import DINER, DINER_XY_polynomial
 
 # ============================== Aspheric ==============================
 # mask = [0, 0, 0, 1, 0, 1, 1, 1, 1, 1]
-mask = [0, 0, 0, 0, 0, 0, 1, 1, 1, 1]  # TODO
+mask = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]  # TODO
 diner = DINER_XY_polynomial(
     in_features=1, out_features=1,
     hidden_features=32, hidden_layers=2,
@@ -134,7 +134,7 @@ settings = {
     'spp_backward'         : 20,
     'num_passes'           : 5,
     'image_batch_size'     : 5,
-    'network_training_iter': 200,
+    'network_training_iter': 2000,
     'num_of_training'      : 10,
     'savefig'              : True
 }
@@ -144,7 +144,7 @@ if settings['savefig']:
     import os
     
     # opath = Path('end2end_output') / (str(datetime.now().strftime("%Y%m%d%H%M%S")) + "-DINER" + f"-mesh{W}*{H}")
-    opath = Path('end2end_output') / (str(datetime.now().strftime("%Y%m%d%H%M%S")) + "-DINER" + f"{sum(mask)}")
+    opath = Path('end2end_output') / (str(datetime.now().strftime("%Y%m%d%H%M%S")) + "-DINER" + f"{sum(mask)}"+f"-GAN2000")
     os.makedirs(opath, exist_ok=True)
     
     results_file = opath / 'training_log.txt'
@@ -160,13 +160,12 @@ def wrapper_func(screen, images, params):
     params: shape=[N], 此处即 DINER 输出的参数.
     """
     # ============================== Aspheric ==============================
-    # lens.surfaces[0].ai = params
+    lens.surfaces[0].ai = params
     # ======================================================================
     
     # ==============================   Mesh   ==============================
-    lens.surfaces[0].c = params
+    # lens.surfaces[0].c = params
     # ======================================================================
-    
     return render(screen, images, settings['spp_forward'])
 
 # --------------------------------------------------------------------------
@@ -201,13 +200,13 @@ for iteration in range(settings['num_of_training']):
         tq.close()
         with torch.no_grad():
             # ============================== Aspheric ==============================
-            # diner_output = diner(None)["model_out"].squeeze(-1)
-            # lens.surfaces[0].ai = diner_output
+            diner_output = diner(None)["model_out"].squeeze(-1)
+            lens.surfaces[0].ai = diner_output
             # ======================================================================
             
             # ==============================   Mesh   ==============================
-            diner_output = diner(None)["model_out"].squeeze(-1).reshape(W, H)
-            lens.surfaces[0].c = diner_output
+            # diner_output = diner(None)["model_out"].squeeze(-1).reshape(W, H)
+            # lens.surfaces[0].c = diner_output
             # ======================================================================
             
             Is = render(screen, images, settings['spp_forward'])
@@ -228,7 +227,7 @@ for iteration in range(settings['num_of_training']):
         cropped_Is_view, cropped_Is_gt_view, cropped_Is_output_view, psnr_val, ssim_val, lpips_val = crop_and_evaluate_views(Is_view, Is_gt_view, Is_output_view)
         print('PSNR={:.2f}, SSIM={:.4f}, LPIPS={:.4f}'.format(psnr_val, ssim_val, lpips_val))
         # ============================== Aspheric ==============================
-        # print('lens.surfaces[0].ai:', lens.surfaces[0].ai)
+        print('lens.surfaces[0].ai:', lens.surfaces[0].ai)
         # ======================================================================
         
         # 保存可视化
@@ -254,11 +253,11 @@ for iteration in range(settings['num_of_training']):
         # (4) 多次 vjp 累加
         # 这里直接使用 DINER 输出作为叶子变量
         # ============================== Aspheric ==============================
-        # param_nd = diner(None)["model_out"].squeeze(-1).detach().clone()
+        param_nd = diner(None)["model_out"].squeeze(-1).detach().clone()
         # ======================================================================
         
         # ==============================   Mesh   ==============================
-        param_nd = diner(None)["model_out"].squeeze(-1).reshape(W, H).detach().clone()
+        # param_nd = diner(None)["model_out"].squeeze(-1).reshape(W, H).detach().clone()
         # ======================================================================
         param_nd.requires_grad = True  # 让它成为leaf param, 方便手动更新
         
@@ -277,11 +276,11 @@ for iteration in range(settings['num_of_training']):
         # (6) 将 vjp 累计梯度传回 DINER
         diner_optim.zero_grad()
         # ============================== Aspheric ==============================
-        #updated_diner_output = diner(None)["model_out"].squeeze(-1)
+        updated_diner_output = diner(None)["model_out"].squeeze(-1)
         # ======================================================================
         
         # ==============================   Mesh   ==============================
-        updated_diner_output = diner(None)["model_out"].squeeze(-1).reshape(W, H)
+        # updated_diner_output = diner(None)["model_out"].squeeze(-1).reshape(W, H)
         # ======================================================================
         
         # (6-1) 计算 "delta" = 新param - 旧param
@@ -296,13 +295,13 @@ for iteration in range(settings['num_of_training']):
         
         # 将本轮结果写入 txt 文件
         # ============================== Aspheric ==============================
-        # current_ai_list = lens.surfaces[0].ai.detach().cpu().tolist()
-        # ai_str = "[" + ", ".join(f"{x:e}" for x in current_ai_list) + "]"
-        # with open(results_file, 'a', encoding='utf-8') as f:
-        #     f.write(f"{z}\t{ai_str}\t{psnr_val:.2f}\t{ssim_val:.4f}\t{lpips_val:.4f}\n")
+        current_ai_list = lens.surfaces[0].ai.detach().cpu().tolist()
+        ai_str = "[" + ", ".join(f"{x:e}" for x in current_ai_list) + "]"
+        with open(results_file, 'a', encoding='utf-8') as f:
+            f.write(f"{z}\t{ai_str}\t{psnr_val:.2f}\t{ssim_val:.4f}\t{lpips_val:.4f}\n")
         # ======================================================================
         
         # ==============================   Mesh   ==============================
-        with open(results_file, 'a', encoding='utf-8') as f:
-            f.write(f"{z}\t{psnr_val:.2f}\t{ssim_val:.4f}\t{lpips_val:.4f}\n")
+        # with open(results_file, 'a', encoding='utf-8') as f:
+        #     f.write(f"{z}\t{psnr_val:.2f}\t{ssim_val:.4f}\t{lpips_val:.4f}\n")
         # ======================================================================
